@@ -2,6 +2,7 @@
   "name": "perlergen",
   "compatibility_date": "2025-12-02",
   "assets": {
-    "directory": "./dist"
+    "directory": "./dist",
+    "browser_router": true  // 启用 SPA 路由支持
   }
 }
