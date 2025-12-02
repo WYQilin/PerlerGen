@@ -1,4 +1,4 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useRef } from 'react';
 
 // Common base styles
 const BASE_BG = 'bg-[#e0e5ec]';
@@ -85,6 +85,45 @@ export const NeuRange: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { 
     </div>
   </div>
 );
+
+export const NeuFileUpload: React.FC<{ onChange: (e: React.ChangeEvent<HTMLInputElement>) => void, accept?: string, children?: ReactNode, className?: string }> = ({ onChange, accept, children, className }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  return (
+    <div className={className}>
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={onChange}
+        accept={accept}
+        className="hidden"
+      />
+      <div 
+        onClick={handleClick}
+        className={`
+          ${BASE_BG} ${SHADOW_OUT}
+          rounded-xl p-6 cursor-pointer
+          flex flex-col items-center justify-center gap-3
+          hover:transform hover:-translate-y-1 transition-all duration-300
+          active:shadow-[inset_4px_4px_8px_0_rgba(163,177,198,0.7),inset_-4px_-4px_8px_0_rgba(255,255,255,0.8)] active:translate-y-0
+          border-2 border-transparent hover:border-slate-200
+          group
+        `}
+      >
+        <div className="p-3 rounded-full bg-[#e0e5ec] shadow-[inset_4px_4px_8px_0_rgba(163,177,198,0.7),inset_-4px_-4px_8px_0_rgba(255,255,255,0.8)] group-hover:shadow-[9px_9px_16px_rgb(163,177,198,0.6),-9px_-9px_16px_rgba(255,255,255,0.5)] transition-all duration-300">
+          <svg className="w-8 h-8 text-slate-500 group-hover:text-slate-600 group-hover:scale-110 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+        </div>
+        <span className="font-bold text-slate-500 group-hover:text-slate-700">{children || 'Upload File'}</span>
+      </div>
+    </div>
+  );
+};
 
 export const NeuModal: React.FC<{ isOpen: boolean; onClose: () => void; title: string; children: ReactNode }> = ({ isOpen, onClose, title, children }) => {
   if (!isOpen) return null;

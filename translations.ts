@@ -1,9 +1,8 @@
-
-export type Language = 'zh' | 'en';
+export type Language = "zh" | "en";
 
 export const translations = {
   en: {
-    appTitle: "PerlerGen AI",
+    appTitle: "PerlerGen",
     subtitle: "Magic Pixel Art Generator",
     config: "Config",
     uploadImage: "Image Source",
@@ -34,10 +33,10 @@ export const translations = {
     aiDiffUnknown: "Unknown",
     aiUsageDeco: "Decoration",
     width: "Width",
-    height: "Height"
+    height: "Height",
   },
   zh: {
-    appTitle: "拼豆生成器 AI",
+    appTitle: "拼豆生成器",
     subtitle: "智能像素画转换与设计工具",
     config: "参数设置",
     uploadImage: "上传图片",
@@ -68,6 +67,6 @@ export const translations = {
     aiDiffUnknown: "未知",
     aiUsageDeco: "装饰品",
     width: "宽",
-    height: "高"
-  }
+    height: "高",
+  },
 };

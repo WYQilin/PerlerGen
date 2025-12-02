@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { NeuCard, NeuButton, NeuInput, NeuSelect, NeuModal } from './components/NeumorphicComponents';
+import { NeuCard, NeuButton, NeuInput, NeuSelect, NeuModal, NeuFileUpload } from './components/NeumorphicComponents';
 import { processImageToPattern } from './services/imageProcessor';
 import { analyzeBeadPattern } from './services/gemini';
 import { PatternData, AIAnalysis, BeadColor } from './types';
@@ -454,7 +454,9 @@ const App = () => {
             
             <div className="flex flex-col gap-1">
               <label className="text-xs font-bold text-slate-400 ml-2 uppercase">{t.uploadImage}</label>
-              <NeuInput type="file" accept="image/*" onChange={handleFileUpload} className="text-sm" />
+              <NeuFileUpload accept="image/*" onChange={handleFileUpload}>
+                {t.uploadImage}
+              </NeuFileUpload>
             </div>
 
             {imageSrc && (
