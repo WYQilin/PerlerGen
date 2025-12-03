@@ -3,6 +3,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { NeuCard, NeuButton, NeuInput, NeuSelect, NeuModal, NeuFileUpload } from './components/NeumorphicComponents';
 import { processImageToPattern } from './services/imageProcessor';
 import { analyzeBeadPattern } from './services/gemini';
+import { drawPatternToCanvas } from './services/exportUtils';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 import { PatternData, AIAnalysis, BeadColor } from './types';
 import { AVAILABLE_PALETTES } from './constants';
 import { translations, Language } from './translations';
@@ -46,6 +49,11 @@ const App = () => {
     currentBead?: BeadColor
   } | null>(null);
   const [colorSearch, setColorSearch] = useState('');
+
+  // Split Export State
+  const [showSplitModal, setShowSplitModal] = useState(false);
+  const [splitConfig, setSplitConfig] = useState({ width: 29, height: 29 });
+  const [isExporting, setIsExporting] = useState(false);
 
   // Derived state for active palette
   const activePalette = AVAILABLE_PALETTES.find(p => p.id === selectedPaletteId) || AVAILABLE_PALETTES[0];
@@ -416,6 +424,54 @@ const App = () => {
     link.click();
   };
 
+  const handleSplitDownload = async () => {
+    if (!patternData) return;
+    setIsExporting(true);
+
+    try {
+      const zip = new JSZip();
+      const { width: chunkW, height: chunkH } = splitConfig;
+      
+      const rows = Math.ceil(patternData.height / chunkH);
+      const cols = Math.ceil(patternData.width / chunkW);
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+           const startX = c * chunkW;
+           const startY = r * chunkH;
+           const currentWidth = Math.min(chunkW, patternData.width - startX);
+           const currentHeight = Math.min(chunkH, patternData.height - startY);
+
+           const canvas = drawPatternToCanvas(patternData, {
+             startX,
+             startY,
+             width: currentWidth,
+             height: currentHeight,
+             showGridLines,
+             hiddenBeadIds,
+             title: `Part ${r + 1}-${c + 1} (Row ${r+1}, Col ${c+1})`
+           });
+
+           if (canvas) {
+             const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve));
+             if (blob) {
+               zip.file(`pattern_row${r+1}_col${c+1}.png`, blob);
+             }
+           }
+        }
+      }
+
+      const content = await zip.generateAsync({ type: "blob" });
+      saveAs(content, "perler-pattern-split.zip");
+      setShowSplitModal(false);
+    } catch (error) {
+      console.error("Export failed", error);
+      alert("Export failed");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen p-4 md:p-8 flex flex-col items-center gap-6 bg-[#e0e5ec]">
       {/* Header & Language Toggle */}
@@ -702,7 +758,15 @@ const App = () => {
 
           {/* Action Footer */}
           {patternData && (
-             <div className="flex justify-end">
+             <div className="flex justify-end gap-4">
+               <NeuButton 
+                  onClick={() => setShowSplitModal(true)}
+                  className="flex items-center gap-2 shadow-lg bg-slate-100 text-slate-600 hover:text-slate-800"
+               >
+                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                 {t.downloadSplit}
+               </NeuButton>
+
                <NeuButton 
                   onClick={handleDownload}
                   className="flex items-center gap-2 shadow-lg"
@@ -777,6 +841,64 @@ const App = () => {
                     </button>
                 ))}
             </div>
+        </div>
+      </NeuModal>
+
+      {/* Split Download Modal */}
+      <NeuModal
+        isOpen={showSplitModal}
+        onClose={() => setShowSplitModal(false)}
+        title={t.splitTitle}
+      >
+        <div className="flex flex-col gap-6">
+          <p className="text-sm text-slate-600">
+            {patternData ? t.splitInfo
+                .replace('{rows}', Math.ceil(patternData.height / splitConfig.height).toString())
+                .replace('{cols}', Math.ceil(patternData.width / splitConfig.width).toString())
+                .replace('{total}', (Math.ceil(patternData.height / splitConfig.height) * Math.ceil(patternData.width / splitConfig.width)).toString())
+              : ''}
+          </p>
+          
+          <div className="flex items-center gap-4">
+             <div className="flex-1 min-w-0">
+                <label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1 block truncate">{t.splitWidth}</label>
+                <NeuInput 
+                    type="number"
+                    value={splitConfig.width}
+                    onChange={(e) => setSplitConfig(prev => ({...prev, width: Number(e.target.value)}))}
+                    min="10"
+                    className="text-center w-full"
+                />
+             </div>
+             <span className="text-slate-400 font-bold pt-6">×</span>
+             <div className="flex-1 min-w-0">
+                <label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1 block truncate">{t.splitHeight}</label>
+                <NeuInput 
+                    type="number"
+                    value={splitConfig.height}
+                    onChange={(e) => setSplitConfig(prev => ({...prev, height: Number(e.target.value)}))}
+                    min="10"
+                    className="text-center w-full"
+                />
+             </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
+             <NeuButton 
+                onClick={handleSplitDownload}
+                disabled={isExporting}
+                className="flex items-center gap-2 w-full justify-center"
+             >
+                {isExporting ? (
+                   <span className="animate-pulse">{t.processing}...</span>
+                ) : (
+                   <>
+                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                     {t.exportZip}
+                   </>
+                )}
+             </NeuButton>
+          </div>
         </div>
       </NeuModal>
 
