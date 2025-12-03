@@ -41,6 +41,10 @@ export const translations = {
     splitInfo: "Will generate {rows} rows x {cols} cols = {total} images",
     exportZip: "Export ZIP",
     processing: "Processing...",
+    footerOpenSource: "Open Source",
+    footerStar: "Star on GitHub",
+    footerBuyMeCoffee: "Buy me a milk tea",
+    donationModalTitle: "Support the Developer",
   },
   zh: {
     appTitle: "拼豆生成器",
@@ -82,5 +86,9 @@ export const translations = {
     splitInfo: "将生成 {rows} 行 x {cols} 列 = {total} 张图纸",
     exportZip: "导出 ZIP 压缩包",
     processing: "处理中...",
+    footerOpenSource: "开源地址",
+    footerStar: "点个 Star",
+    footerBuyMeCoffee: "给我买杯奶茶",
+    donationModalTitle: "支持开发者",
   },
 };

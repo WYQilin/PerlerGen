@@ -54,6 +54,7 @@ const App = () => {
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [splitConfig, setSplitConfig] = useState({ width: 29, height: 29 });
   const [isExporting, setIsExporting] = useState(false);
+  const [showDonationModal, setShowDonationModal] = useState(false);
 
   // Derived state for active palette
   const activePalette = AVAILABLE_PALETTES.find(p => p.id === selectedPaletteId) || AVAILABLE_PALETTES[0];
@@ -236,13 +237,25 @@ const App = () => {
   }, [patternData, showGridLines, hiddenBeadIds]);
 
   // Zoom and Pan Handlers
-  const handleWheel = (e: React.WheelEvent) => {
-    if (!patternData) return;
-    e.preventDefault();
-    const zoomSensitivity = 0.001;
-    const newZoom = Math.min(Math.max(0.1, zoom - e.deltaY * zoomSensitivity), 5);
-    setZoom(newZoom);
-  };
+  // Use ref to attach non-passive listener to prevent default scroll behavior
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (!patternData) return;
+      e.preventDefault();
+      const zoomSensitivity = 0.001;
+      setZoom(prev => Math.min(Math.max(0.1, prev - e.deltaY * zoomSensitivity), 5));
+    };
+
+    // Passive: false is required to be able to call preventDefault()
+    container.addEventListener('wheel', onWheel, { passive: false });
+
+    return () => {
+      container.removeEventListener('wheel', onWheel);
+    };
+  }, [patternData]); // Re-bind when patternData changes
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!patternData) return;
@@ -260,6 +273,55 @@ const App = () => {
 
   const handleMouseUp = () => {
     setIsDragging(false);
+  };
+
+  // Touch Handlers for Mobile
+  const lastTouchDistance = useRef<number | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (!patternData) return;
+    
+    if (e.touches.length === 1) {
+        setIsDragging(true);
+        setLastMousePos({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+    } else if (e.touches.length === 2) {
+        const dist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+        );
+        lastTouchDistance.current = dist;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!patternData) return;
+    // Prevent default to stop scrolling/zooming the page
+    // e.preventDefault(); // Note: React might complain about non-passive event, but in App.tsx it's often fine or handled via CSS touch-action
+
+    if (e.touches.length === 1 && isDragging) {
+        const deltaX = e.touches[0].clientX - lastMousePos.x;
+        const deltaY = e.touches[0].clientY - lastMousePos.y;
+        setPan(prev => ({ x: prev.x + deltaX, y: prev.y + deltaY }));
+        setLastMousePos({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+    } else if (e.touches.length === 2) {
+        const dist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+        );
+
+        if (lastTouchDistance.current !== null) {
+            const delta = dist - lastTouchDistance.current;
+            const zoomSensitivity = 0.005;
+            const newZoom = Math.min(Math.max(0.1, zoom + delta * zoomSensitivity), 5);
+            setZoom(newZoom);
+        }
+        lastTouchDistance.current = dist;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+    lastTouchDistance.current = null;
   };
 
   // Canvas Click for Pixel Editing
@@ -703,12 +765,14 @@ const App = () => {
             ) : (
               <div 
                 ref={containerRef}
-                className="w-full h-full absolute inset-0 overflow-hidden cursor-crosshair bg-[#e0e5ec] shadow-inner"
-                onWheel={handleWheel}
+                className="w-full h-full absolute inset-0 overflow-hidden cursor-crosshair bg-[#e0e5ec] shadow-inner touch-none"
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
                 onClick={handleCanvasClick}
               >
                  {/* Instructions overlay */}
@@ -901,6 +965,44 @@ const App = () => {
           </div>
         </div>
       </NeuModal>
+
+      {/* Donation Modal */}
+      <NeuModal
+        isOpen={showDonationModal}
+        onClose={() => setShowDonationModal(false)}
+        title={t.donationModalTitle}
+      >
+        <div className="flex flex-col items-center justify-center gap-4 p-4">
+          <div className="w-64 h-64 bg-white p-2 rounded-xl shadow-inner flex items-center justify-center">
+             <img src="/alipay.jpg" alt="Alipay QR Code" className="w-full h-full object-contain" />
+          </div>
+          <p className="text-slate-500 text-center text-sm font-medium">
+            {t.footerBuyMeCoffee} ❤️
+          </p>
+        </div>
+      </NeuModal>
+
+      {/* Footer */}
+      <footer className="w-full max-w-7xl flex flex-col md:flex-row justify-between items-center gap-4 mt-12 pb-8 text-slate-500 border-t border-slate-300/50 pt-8">
+        <div className="flex items-center gap-4 text-sm font-medium">
+          <a href="https://github.com/pengGgxp/PerlerGen" target="_blank" rel="noopener noreferrer" className="hover:text-slate-700 flex items-center gap-2 transition-colors">
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" /></svg>
+            <span>{t.footerOpenSource}</span>
+          </a>
+          <span className="text-slate-300">•</span>
+          <a href="https://github.com/pengGgxp/PerlerGen" target="_blank" rel="noopener noreferrer" className="hover:text-yellow-500 flex items-center gap-1 transition-colors">
+             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
+             {t.footerStar}
+          </a>
+        </div>
+        
+        <NeuButton 
+          onClick={() => setShowDonationModal(true)}
+          className="!px-5 !py-2 text-sm flex items-center gap-2 font-bold text-slate-600 hover:text-pink-500"
+        >
+          <span>🧋</span> {t.footerBuyMeCoffee}
+        </NeuButton>
+      </footer>
 
     </div>
   );
