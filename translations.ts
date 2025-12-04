@@ -44,6 +44,7 @@ export const translations = {
     footerOpenSource: "Open Source",
     footerStar: "Star on GitHub",
     footerBuyMeCoffee: "Buy me a milk tea",
+    footerBlog: "My Blog",
     donationModalTitle: "Support the Developer",
   },
   zh: {
@@ -89,6 +90,7 @@ export const translations = {
     footerOpenSource: "开源地址",
     footerStar: "点个 Star",
     footerBuyMeCoffee: "给我买杯奶茶",
+    footerBlog: "我的博客",
     donationModalTitle: "支持开发者",
   },
 };
