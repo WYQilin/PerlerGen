@@ -1,0 +1,302 @@
+import { PatternData } from "../types";
+
+interface DrawOptions {
+  startX: number;
+  startY: number;
+  width: number;
+  height: number;
+  cellSize?: number;
+  margin?: number;
+  title?: string;
+  showGridLines: boolean; // This actually means "show circular beads" in the app context
+  hiddenBeadIds: Set<string>;
+}
+
+export const drawPatternToCanvas = (
+  data: PatternData,
+  options: DrawOptions
+): HTMLCanvasElement | null => {
+  const {
+    startX,
+    startY,
+    width,
+    height,
+    cellSize = 20,
+    margin = 35,
+    title,
+    showGridLines, // effectively "circular beads" toggle
+    hiddenBeadIds,
+  } = options;
+
+  const canvasWidth = width * cellSize + margin;
+  const canvasHeight = height * cellSize + margin + (title ? 30 : 0); // Extra space for title
+
+  const canvas = document.createElement("canvas");
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  // Fill white background
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  // Title
+  let titleOffset = 0;
+  if (title) {
+    titleOffset = 30;
+    ctx.font = "bold 16px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#334155"; // Slate-700
+    ctx.fillText(title, canvasWidth / 2, 20);
+  }
+
+  // Setup Text for coords
+  ctx.font = "bold 10px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#64748b"; // Slate-500
+
+  // Draw Top Numbers (Columns) - Absolute coords
+  for (let x = 0; x < width; x++) {
+    const absX = startX + x + 1;
+    // Show 1st, last, and every 5th
+    if (absX === 1 || absX % 5 === 0 || x === width - 1) {
+      ctx.fillText(
+        `${absX}`,
+        margin + x * cellSize + cellSize / 2,
+        titleOffset + margin / 2
+      );
+    }
+  }
+
+  // Draw Left Numbers (Rows) - Absolute coords
+  for (let y = 0; y < height; y++) {
+    const absY = startY + y + 1;
+    if (absY === 1 || absY % 5 === 0 || y === height - 1) {
+      ctx.fillText(
+        `${absY}`,
+        margin / 2,
+        titleOffset + margin + y * cellSize + cellSize / 2
+      );
+    }
+  }
+
+  // Move to grid area
+  ctx.translate(margin, titleOffset + margin);
+
+  // Draw Grid
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const gridY = startY + y;
+      const gridX = startX + x;
+
+      // Boundary check (should not happen if loops are correct, but safety first)
+      if (gridY >= data.height || gridX >= data.width) continue;
+
+      const bead = data.grid[gridY][gridX];
+
+      // Background grid cell border
+      ctx.strokeStyle = "#e2e8f0"; // Light grey
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize);
+
+      if (!hiddenBeadIds.has(bead.id)) {
+        ctx.fillStyle = bead.hex;
+        if (showGridLines) {
+          // Draw Circular Bead
+          ctx.beginPath();
+          ctx.arc(
+            x * cellSize + cellSize / 2,
+            y * cellSize + cellSize / 2,
+            cellSize / 2 - 1.5,
+            0,
+            2 * Math.PI
+          );
+          ctx.fill();
+        } else {
+          // Draw Square
+          ctx.fillRect(
+            x * cellSize + 1,
+            y * cellSize + 1,
+            cellSize - 2,
+            cellSize - 2
+          );
+        }
+
+        // Draw Bead ID
+        ctx.font = "bold 7px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        // Calculate contrast color
+        const r = parseInt(bead.hex.slice(1, 3), 16);
+        const g = parseInt(bead.hex.slice(3, 5), 16);
+        const b = parseInt(bead.hex.slice(5, 7), 16);
+        const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+        ctx.fillStyle = yiq >= 128 ? "#000000" : "#ffffff";
+
+        ctx.fillText(
+          bead.id,
+          x * cellSize + cellSize / 2,
+          y * cellSize + cellSize / 2
+        );
+      }
+    }
+  }
+
+  // Draw Thicker Lines for 10x10 blocks relative to absolute
+  ctx.strokeStyle = "#94a3b8"; // Slate-400
+  ctx.lineWidth = 2;
+
+  // Vertical lines
+  for (let x = 0; x <= width; x++) {
+    const absX = startX + x;
+    if (absX % 10 === 0 && absX !== 0) {
+      // Don't draw on 0 if not needed, but here x is relative
+      ctx.beginPath();
+      ctx.moveTo(x * cellSize, 0);
+      ctx.lineTo(x * cellSize, height * cellSize);
+      ctx.stroke();
+    }
+  }
+
+  // Horizontal lines
+  for (let y = 0; y <= height; y++) {
+    const absY = startY + y;
+    if (absY % 10 === 0 && absY !== 0) {
+      ctx.beginPath();
+      ctx.moveTo(0, y * cellSize);
+      ctx.lineTo(width * cellSize, y * cellSize);
+      ctx.stroke();
+    }
+  }
+
+  // Always draw border around the chunk
+  ctx.strokeRect(0, 0, width * cellSize, height * cellSize);
+
+  return canvas;
+};
+
+export const drawMaterialListToCanvas = (
+  data: PatternData,
+  activePaletteColors: import("../types").BeadColor[],
+  hiddenBeadIds: Set<string>,
+  excludeHidden: boolean,
+  title: string
+): HTMLCanvasElement | null => {
+  // 1. Calculate items to show
+  const items = activePaletteColors
+    .filter((b) => data.counts[b.id])
+    .filter((b) => !excludeHidden || !hiddenBeadIds.has(b.id))
+    .sort((a, b) => (data.counts[b.id] || 0) - (data.counts[a.id] || 0));
+
+  if (items.length === 0) return null;
+
+  // 2. Constants
+  const rowHeight = 40;
+  const headerHeight = 60;
+  const padding = 20;
+  const colWidths = {
+    swatch: 50,
+    id: 80,
+    name: 150,
+    count: 80,
+  };
+  const canvasWidth =
+    padding * 2 +
+    colWidths.swatch +
+    colWidths.id +
+    colWidths.name +
+    colWidths.count;
+  const canvasHeight = headerHeight + items.length * rowHeight + padding * 2;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  // 3. Background
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  // 4. Header
+  ctx.fillStyle = "#334155"; // Slate-700
+  ctx.font = "bold 20px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(title, canvasWidth / 2, padding + 20);
+
+  // 5. Draw Items
+  let currentY = padding + headerHeight;
+
+  items.forEach((bead, index) => {
+    const isHidden = hiddenBeadIds.has(bead.id);
+    const count = data.counts[bead.id];
+
+    // Row Background (zebra striping)
+    if (index % 2 === 0) {
+      ctx.fillStyle = "#f8fafc";
+      ctx.fillRect(
+        padding,
+        currentY - rowHeight / 2,
+        canvasWidth - padding * 2,
+        rowHeight
+      );
+    }
+
+    // Opacity for hidden items if shown
+    const globalAlpha = !excludeHidden && isHidden ? 0.3 : 1.0;
+    ctx.globalAlpha = globalAlpha;
+
+    let currentX = padding;
+
+    // Swatch
+    ctx.fillStyle = bead.hex;
+    ctx.strokeStyle = "#cbd5e1";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(currentX + colWidths.swatch / 2, currentY, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    currentX += colWidths.swatch;
+
+    // ID
+    ctx.fillStyle = "#64748b";
+    ctx.font = "bold 14px monospace";
+    ctx.textAlign = "left";
+    ctx.fillText(bead.id, currentX, currentY);
+    currentX += colWidths.id;
+
+    // Name
+    ctx.fillStyle = "#334155";
+    ctx.font = "14px sans-serif";
+    ctx.fillText(bead.name, currentX, currentY);
+    currentX += colWidths.name;
+
+    // Count
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "bold 14px sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(`${count}`, currentX + colWidths.count - 10, currentY);
+
+    // Restore alpha
+    ctx.globalAlpha = 1.0;
+
+    currentY += rowHeight;
+  });
+
+  // Border
+  ctx.strokeStyle = "#e2e8f0";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(
+    padding,
+    padding + headerHeight - rowHeight / 2,
+    canvasWidth - padding * 2,
+    items.length * rowHeight
+  );
+
+  return canvas;
+};

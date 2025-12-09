@@ -3,16 +3,21 @@ import React, { useState, useEffect, useRef } from 'react';
 import { NeuCard, NeuButton, NeuInput, NeuSelect, NeuModal, NeuFileUpload } from './components/NeumorphicComponents';
 import { processImageToPattern } from './services/imageProcessor';
 import { analyzeBeadPattern } from './services/gemini';
-import { drawPatternToCanvas } from './services/exportUtils';
+import { drawPatternToCanvas, drawMaterialListToCanvas } from './services/exportUtils';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { PatternData, AIAnalysis, BeadColor } from './types';
-import { AVAILABLE_PALETTES } from './constants';
+// import { AVAILABLE_PALETTES } from './constants'; // Removed: Used from Context
 import { translations, Language } from './translations';
+import { usePalette } from './context/PaletteContext';
+import { parsePaletteCSV } from './services/csvUtils';
 
 const App = () => {
   const [language, setLanguage] = useState<Language>('zh'); // Default to Chinese
   const t = translations[language];
+  
+  // Context
+  const { allPalettes, selectedPaletteId, activePalette, setSelectedPaletteId, addCustomPalette, removeCustomPalette } = usePalette();
 
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   
@@ -22,14 +27,19 @@ const App = () => {
   const [lockRatio, setLockRatio] = useState<boolean>(true);
   const [imgAspectRatio, setImgAspectRatio] = useState<number>(1);
 
-  // Palette State
-  const [selectedPaletteId, setSelectedPaletteId] = useState<string>(AVAILABLE_PALETTES[0].id);
+  // Palette State - MOVED TO CONTEXT
+  // const [selectedPaletteId, setSelectedPaletteId] = useState<string>(AVAILABLE_PALETTES[0].id);
 
   const [patternData, setPatternData] = useState<PatternData | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showGridLines, setShowGridLines] = useState(true);
+
+  // CSV Import State
+  const [showCsvModal, setShowCsvModal] = useState(false);
+  const [csvName, setCsvName] = useState('');
+  const [csvFile, setCsvFile] = useState<File | null>(null);
 
   // Canvas Interaction State
   const [zoom, setZoom] = useState(1);
@@ -55,9 +65,13 @@ const App = () => {
   const [splitConfig, setSplitConfig] = useState({ width: 29, height: 29 });
   const [isExporting, setIsExporting] = useState(false);
   const [showDonationModal, setShowDonationModal] = useState(false);
+  
+  // Material Export State
+  const [showMaterialExportModal, setShowMaterialExportModal] = useState(false);
+  const [excludeHiddenMaterials, setExcludeHiddenMaterials] = useState(true);
 
-  // Derived state for active palette
-  const activePalette = AVAILABLE_PALETTES.find(p => p.id === selectedPaletteId) || AVAILABLE_PALETTES[0];
+  // Derived state for active palette - MOVED TO CONTEXT
+  // const activePalette = AVAILABLE_PALETTES.find(p => p.id === selectedPaletteId) || AVAILABLE_PALETTES[0];
 
   // File Upload Handler
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -75,6 +89,36 @@ const App = () => {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handleCsvUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+        setCsvFile(file);
+        // Default name to filename without extension
+        if (!csvName) {
+            setCsvName(file.name.replace(/\.[^/.]+$/, ""));
+        }
+    }
+  };
+
+  const handleImportCsv = () => {
+      if (!csvFile || !csvName) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+          const content = e.target?.result as string;
+          const colors = parsePaletteCSV(content);
+          if (colors.length > 0) {
+              addCustomPalette(csvName, colors);
+              setShowCsvModal(false);
+              setCsvFile(null);
+              setCsvName('');
+              alert(`Imported ${colors.length} colors successfully!`);
+          } else {
+              alert('Failed to parse CSV. Please check the format.');
+          }
+      };
+      reader.readAsText(csvFile);
   };
 
   // When image loads, calculate aspect ratio and reset height
@@ -142,6 +186,27 @@ const App = () => {
       return () => clearTimeout(timer);
     }
   }, [imageSrc, gridWidth, gridHeight, activePalette]); // Removed patternData dependency to avoid loops
+
+  const handleMaterialExport = () => {
+    if (!patternData) return;
+    
+    const canvas = drawMaterialListToCanvas(
+        patternData,
+        activePalette.colors,
+        hiddenBeadIds,
+        excludeHiddenMaterials,
+        `${t.appTitle} - ${t.materials}`
+    );
+
+    if (canvas) {
+        canvas.toBlob((blob) => {
+            if (blob) {
+                saveAs(blob, `perler-materials-${patternData.width}x${patternData.height}.png`);
+                setShowMaterialExportModal(false);
+            }
+        });
+    }
+  };
 
   // Helper to recalculate counts after edits
   const recalculateCounts = (grid: BeadColor[][]): Record<string, number> => {
@@ -387,97 +452,17 @@ const App = () => {
   const handleDownload = () => {
     if (!patternData) return;
 
-    // Settings for the export image
-    const cellSize = 20; // Larger than screen for better quality
-    const margin = 35; // Space for labels
-    const width = patternData.width * cellSize + margin;
-    const height = patternData.height * cellSize + margin;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    
-    if (!ctx) return;
-
-    // Fill white background
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, width, height);
-
-    // Setup Text
-    ctx.font = 'bold 10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#64748b'; // Slate-500
-
-    // Draw Top Numbers (Columns)
-    for (let x = 0; x < patternData.width; x++) {
-        // Label every 5th, plus the 1st
-        if ((x + 1) === 1 || (x + 1) % 5 === 0) {
-            ctx.fillText(`${x + 1}`, margin + x * cellSize + cellSize / 2, margin / 2);
-        }
-    }
-
-    // Draw Left Numbers (Rows)
-    for (let y = 0; y < patternData.height; y++) {
-        if ((y + 1) === 1 || (y + 1) % 5 === 0) {
-            ctx.fillText(`${y + 1}`, margin / 2, margin + y * cellSize + cellSize / 2);
-        }
-    }
-
-    // Move to grid area
-    ctx.translate(margin, margin);
-
-    // Draw Grid
-    patternData.grid.forEach((row, y) => {
-        row.forEach((bead, x) => {
-            // Background grid cell border
-            ctx.strokeStyle = '#e2e8f0'; // Light grey
-            ctx.lineWidth = 1;
-            ctx.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize);
-
-            if (!hiddenBeadIds.has(bead.id)) {
-                ctx.fillStyle = bead.hex;
-                // Draw Bead
-                if (showGridLines) {
-                    ctx.beginPath();
-                    ctx.arc(
-                        x * cellSize + cellSize / 2, 
-                        y * cellSize + cellSize / 2, 
-                        (cellSize / 2) - 1.5, 
-                        0, 
-                        2 * Math.PI
-                    );
-                    ctx.fill();
-                } else {
-                    ctx.fillRect(x * cellSize + 1, y * cellSize + 1, cellSize - 2, cellSize - 2);
-                }
-            } else {
-                // If hidden, maybe just a cross or empty? Leaving empty.
-            }
-        });
+    const canvas = drawPatternToCanvas(patternData, {
+      startX: 0,
+      startY: 0,
+      width: patternData.width,
+      height: patternData.height,
+      showGridLines,
+      hiddenBeadIds,
+      title: `${t.appTitle} - ${patternData.width}x${patternData.height}`
     });
 
-    // Add darker lines every 10 cells for easy counting
-    ctx.strokeStyle = '#94a3b8'; // Slate-400
-    ctx.lineWidth = 2;
-    // Verticals
-    for (let i = 0; i <= patternData.width; i += 10) {
-         ctx.beginPath();
-         ctx.moveTo(i * cellSize, 0);
-         ctx.lineTo(i * cellSize, patternData.height * cellSize);
-         ctx.stroke();
-    }
-    // Horizontals
-    for (let i = 0; i <= patternData.height; i += 10) {
-         ctx.beginPath();
-         ctx.moveTo(0, i * cellSize);
-         ctx.lineTo(patternData.width * cellSize, i * cellSize);
-         ctx.stroke();
-    }
-
-    // Border around the whole grid
-    ctx.strokeRect(0, 0, patternData.width * cellSize, patternData.height * cellSize);
+    if (!canvas) return;
 
     // Trigger Download
     const link = document.createElement('a');
@@ -581,14 +566,43 @@ const App = () => {
               <>
                 <div className="flex flex-col gap-1">
                    <label className="text-xs font-bold text-slate-400 ml-2 uppercase">{t.palette}</label>
-                   <NeuSelect 
-                      value={selectedPaletteId} 
-                      onChange={(e) => setSelectedPaletteId(e.target.value)}
-                   >
-                      {AVAILABLE_PALETTES.map(p => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                   </NeuSelect>
+                   <div className="flex gap-2 items-center">
+                     <NeuSelect 
+                        value={selectedPaletteId} 
+                        onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === 'import_new') {
+                                setShowCsvModal(true);
+                            } else {
+                                setSelectedPaletteId(val);
+                            }
+                        }}
+                        className="flex-1"
+                     >
+                        {allPalettes.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} {p.id.startsWith('custom_') ? `(${t.custom})` : ''}
+                          </option>
+                        ))}
+                        <option value="import_new" className="font-bold text-blue-600">
+                          + {t.importPalette}
+                        </option>
+                     </NeuSelect>
+                     
+                     {selectedPaletteId.startsWith('custom_') && (
+                       <button
+                         onClick={() => {
+                           if (window.confirm('Are you sure you want to delete this palette?')) {
+                             removeCustomPalette(selectedPaletteId);
+                           }
+                         }}
+                         className="p-2 text-red-400 hover:text-red-600 transition-colors"
+                         title={t.deletePalette}
+                       >
+                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                       </button>
+                     )}
+                   </div>
                 </div>
 
                 <div className="flex flex-col gap-2">
@@ -824,6 +838,14 @@ const App = () => {
           {patternData && (
              <div className="flex justify-end gap-4">
                <NeuButton 
+                  onClick={() => setShowMaterialExportModal(true)}
+                  className="flex items-center gap-2 shadow-lg bg-slate-100 text-slate-600 hover:text-slate-800"
+               >
+                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                 {t.exportMaterials}
+               </NeuButton>
+
+               <NeuButton 
                   onClick={() => setShowSplitModal(true)}
                   className="flex items-center gap-2 shadow-lg bg-slate-100 text-slate-600 hover:text-slate-800"
                >
@@ -962,6 +984,61 @@ const App = () => {
                    </>
                 )}
              </NeuButton>
+          </div>
+        </div>
+      </NeuModal>
+
+      {/* CSV Import Modal */}
+      <NeuModal
+        isOpen={showCsvModal}
+        onClose={() => setShowCsvModal(false)}
+        title={t.importPalette}
+      >
+        <div className="flex flex-col gap-4">
+          <NeuInput 
+            value={csvName} 
+            onChange={(e) => setCsvName(e.target.value)} 
+            placeholder={t.paletteName} 
+          />
+          <div className="flex flex-col gap-1">
+             <label className="text-xs font-bold text-slate-400 ml-1">{t.uploadCsv}</label>
+             <NeuFileUpload onChange={handleCsvUpload} accept=".csv">
+               {csvFile ? csvFile.name : t.uploadCsv}
+             </NeuFileUpload>
+          </div>
+          <p className="text-xs text-slate-400">
+            {t.csvFormatInfo}
+          </p>
+          <NeuButton onClick={handleImportCsv} disabled={!csvFile || !csvName}>
+            {t.addPalette}
+          </NeuButton>
+        </div>
+      </NeuModal>
+
+      {/* Material Export Modal */}
+      <NeuModal
+        isOpen={showMaterialExportModal}
+        onClose={() => setShowMaterialExportModal(false)}
+        title={t.exportMaterials}
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-slate-600">{t.exportMaterialsDesc}</p>
+          <div className="flex items-center gap-2 p-3 bg-slate-200/50 rounded-xl">
+            <input 
+              type="checkbox" 
+              id="excludeHidden"
+              checked={excludeHiddenMaterials} 
+              onChange={(e) => setExcludeHiddenMaterials(e.target.checked)}
+              className="w-5 h-5 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+            />
+            <label htmlFor="excludeHidden" className="text-sm font-bold text-slate-700 cursor-pointer select-none flex-1">
+              {t.excludeHidden}
+            </label>
+          </div>
+          <div className="flex justify-end pt-2">
+            <NeuButton onClick={handleMaterialExport} className="w-full justify-center">
+              {t.exportMaterials}
+            </NeuButton>
           </div>
         </div>
       </NeuModal>

@@ -19,7 +19,7 @@ export default defineConfig(({ mode }) => {
     },
     resolve: {
       alias: {
-        "@": path.resolve(process.cwd(), "."), // 使用 process.cwd() 替代 __dirname
+        "@": path.resolve(process.cwd(), "src"), // 使用 process.cwd() 替代 __dirname
       },
     },
     build: {
