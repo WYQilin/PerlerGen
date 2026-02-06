@@ -21,15 +21,16 @@ export const drawPatternToCanvas = (
     startY,
     width,
     height,
-    cellSize = 20,
-    margin = 35,
+    cellSize = 50, // Increased from 20 for better resolution
+    margin = 80,   // Increased from 35
     title,
     showGridLines, // effectively "circular beads" toggle
     hiddenBeadIds,
   } = options;
 
+  const titleHeight = title ? 80 : 0; // Increased from 30
   const canvasWidth = width * cellSize + margin;
-  const canvasHeight = height * cellSize + margin + (title ? 30 : 0); // Extra space for title
+  const canvasHeight = height * cellSize + margin + titleHeight;
 
   const canvas = document.createElement("canvas");
   canvas.width = canvasWidth;
@@ -44,16 +45,16 @@ export const drawPatternToCanvas = (
   // Title
   let titleOffset = 0;
   if (title) {
-    titleOffset = 30;
-    ctx.font = "bold 16px sans-serif";
+    titleOffset = titleHeight;
+    ctx.font = "bold 40px sans-serif"; // Increased from 16px
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#334155"; // Slate-700
-    ctx.fillText(title, canvasWidth / 2, 20);
+    ctx.fillText(title, canvasWidth / 2, 40);
   }
 
   // Setup Text for coords
-  ctx.font = "bold 10px sans-serif";
+  ctx.font = "bold 24px sans-serif"; // Increased from 10px
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = "#64748b"; // Slate-500
@@ -99,7 +100,7 @@ export const drawPatternToCanvas = (
 
       // Background grid cell border
       ctx.strokeStyle = "#e2e8f0"; // Light grey
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 2; // Increased from 1
       ctx.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize);
 
       if (!hiddenBeadIds.has(bead.id)) {
@@ -110,7 +111,7 @@ export const drawPatternToCanvas = (
           ctx.arc(
             x * cellSize + cellSize / 2,
             y * cellSize + cellSize / 2,
-            cellSize / 2 - 1.5,
+            cellSize / 2 - 4, // Adjusted padding
             0,
             2 * Math.PI
           );
@@ -118,15 +119,15 @@ export const drawPatternToCanvas = (
         } else {
           // Draw Square
           ctx.fillRect(
-            x * cellSize + 1,
-            y * cellSize + 1,
-            cellSize - 2,
-            cellSize - 2
+            x * cellSize + 2,
+            y * cellSize + 2,
+            cellSize - 4,
+            cellSize - 4
           );
         }
 
         // Draw Bead ID
-        ctx.font = "bold 7px sans-serif";
+        ctx.font = "bold 20px sans-serif"; // Increased from 7px
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
 
@@ -148,7 +149,7 @@ export const drawPatternToCanvas = (
 
   // Draw Thicker Lines for 10x10 blocks relative to absolute
   ctx.strokeStyle = "#94a3b8"; // Slate-400
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 4; // Increased from 2
 
   // Vertical lines
   for (let x = 0; x <= width; x++) {
@@ -195,14 +196,14 @@ export const drawMaterialListToCanvas = (
   if (items.length === 0) return null;
 
   // 2. Constants
-  const rowHeight = 40;
-  const headerHeight = 60;
-  const padding = 20;
+  const rowHeight = 80;
+  const headerHeight = 120;
+  const padding = 40;
   const colWidths = {
-    swatch: 50,
-    id: 80,
-    name: 150,
-    count: 80,
+    swatch: 100,
+    id: 160,
+    name: 300,
+    count: 160,
   };
   const canvasWidth =
     padding * 2 +
@@ -224,10 +225,10 @@ export const drawMaterialListToCanvas = (
 
   // 4. Header
   ctx.fillStyle = "#334155"; // Slate-700
-  ctx.font = "bold 20px sans-serif";
+  ctx.font = "bold 40px sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(title, canvasWidth / 2, padding + 20);
+  ctx.fillText(title, canvasWidth / 2, padding + 40);
 
   // 5. Draw Items
   let currentY = padding + headerHeight;
@@ -256,31 +257,31 @@ export const drawMaterialListToCanvas = (
     // Swatch
     ctx.fillStyle = bead.hex;
     ctx.strokeStyle = "#cbd5e1";
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(currentX + colWidths.swatch / 2, currentY, 12, 0, Math.PI * 2);
+    ctx.arc(currentX + colWidths.swatch / 2, currentY, 24, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     currentX += colWidths.swatch;
 
     // ID
     ctx.fillStyle = "#64748b";
-    ctx.font = "bold 14px monospace";
+    ctx.font = "bold 28px monospace";
     ctx.textAlign = "left";
     ctx.fillText(bead.id, currentX, currentY);
     currentX += colWidths.id;
 
     // Name
     ctx.fillStyle = "#334155";
-    ctx.font = "14px sans-serif";
+    ctx.font = "28px sans-serif";
     ctx.fillText(bead.name, currentX, currentY);
     currentX += colWidths.name;
 
     // Count
     ctx.fillStyle = "#0f172a";
-    ctx.font = "bold 14px sans-serif";
+    ctx.font = "bold 28px sans-serif";
     ctx.textAlign = "right";
-    ctx.fillText(`${count}`, currentX + colWidths.count - 10, currentY);
+    ctx.fillText(`${count}`, currentX + colWidths.count - 20, currentY);
 
     // Restore alpha
     ctx.globalAlpha = 1.0;
@@ -290,7 +291,7 @@ export const drawMaterialListToCanvas = (
 
   // Border
   ctx.strokeStyle = "#e2e8f0";
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 4;
   ctx.strokeRect(
     padding,
     padding + headerHeight - rowHeight / 2,
